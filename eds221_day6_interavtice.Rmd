@@ -1,0 +1,315 @@
+---
+title: "day 6 data wrangling in tidyR"
+author: "Jared Petry"
+date: "2022-08-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(tidyverse)
+library(janitor) 
+library(here)
+```
+
+## Read in the world bank (WB) data files
+
+```{r}
+#---- this is a "helpfully" untidy dataset for what we want to do 
+
+wb_indicators <- read_csv(here::here("data", "wb_indicators.csv"), na = c("..", ""))
+
+#---- turn the ".." and spaces values into NA values by using the na = argument of the read_csv() function
+
+#---- also read in the meta data 
+
+wb_metadata <- read_csv(here("data", "wb_indicators_metadata.csv"))
+
+
+```
+
+
+## Change stuff about the data - WRANGLE
+
+the data has a bunch of years... telltale sign that year needs its own column.... will use pivot_longer()
+ALSO 
+there are more than one variable existing in single column... will use pivot_wider()
+
+```{r}
+#pivot longer 
+#----arguments: cols, specify columns that you want to "gather" together, # R will be confused without these`` bc of the square brackets
+#-------------names to is what you are going to call this new column that is hella long
+#-------------values to names a new column that has the values corresponding to the lengthened column
+
+wb_indicators_long <- wb_indicators |> 
+  pivot_longer(cols = `2001 [YR2001]`:`2020 [YR2020]`) 
+
+```
+
+## Seperate to clean up the year column 
+we want to take the original "year" column and split the column 
+``we could make a pipe sequence that does all of this at once by the way
+this is a bit overkill but good practice 
+the second select is to exclude those columns
+use quotes because theres spaces in the column names 
+The year column has type = "chr" but we want to switch to numeric 
+we are also going to drop the rows with NA values... be very careful with this ... only do this at the ery end of your data cleanup so you don't get rid of multiple variables at the same time and lose a bunch of data 
+lastly, widen the variables currently trapped in 'series name' to be spread accross multiple columns ... and get the values that populated the columns from 'indicator value'
+
+```{r}
+wb_clean <- wb_indicators_long |> 
+  separate(col = name, into = c("year", "year.chr"), sep = " ") |> 
+  select(-year.chr, -`Country Code`, -`Series Code`)  |> 
+  mutate(year = as.numeric(year)) |> 
+  drop_na('Series Name') |> 
+  pivot_wider(names_from = 'Series Name', values_from = 'value')
+```
+
+Now just rename the columns (names is not a pipe-able function... not all functions are built for piping)
+- rename() function is also great for renaming 
+
+```{r}
+names(wb_clean) <- c("country", "year", "access_clean_fuels_pp", "access_electricity_pp", "co2_emissions_kt", "fossil_fuels_cons_pct", "water_stress")
+```
+
+Pick 4 countries and make a subset for them 
+(filter is the rows one!!... use the %in% operator)
+
+```{r}
+wb_subs <- wb_clean |> 
+  filter(country %in% c("Algeria", "Barbados", "Bulgaria", "Chile"))
+
+#----make a subset graph un-grouped at first 
+
+ggplot(data = wb_subs, aes(x = year, y = co2_emissions_kt)) +
+  geom_line(aes(color = country)) #if you want 4 different graphs instead of them being in the same graph, +facet_wrap() 
+
+
+```
+
+# Filter 
+
+Ex1 Filter to only keep exact matches 
+loda the starwars dataset
+only keep observations where the height > 180
+```{r}
+ex_1 <- starwars |> 
+  filter(height > 180) #--- give the condition of rows you want to keep
+```
+
+Exact match 
+```{r}
+ex_2 <- starwars |> 
+  filter(eye_color == "blue") #can run: unique(ex_2$eye_color) to check that it returns "blue" to see if this worked
+```
+
+Make a subset where the homeworld is naboo are the only rows 
+```{r}
+ex_3 <- starwars |> 
+  filter(homeworld == "Naboo")
+```
+
+Ex4:
+create subset where height is over 180 AND (&) homeworld is tatooine [commas are usually also treated as AND]
+```{r}
+ex_4 <- starwars |> 
+  filter(height > 180 & homeworld == "Tatooine")
+```
+
+ex 5 
+hair color brown AND species is human 
+```{r}
+ex_5 <- starwars |> 
+  filter(hair_color == "brown" & species == "Human")
+```
+
+# Filtering OR statements use '|'
+```{r}
+ex_6 <- starwars |> 
+  filter(height > 180 | eye_color == "yellow")
+```
+
+```{r}
+ex_7 <- starwars |> 
+  filter(homeworld == "Endor" | species == "Droid")
+```
+
+keep obs where eye color is blue OR brown OR red....
+  could feel tedious to write out all that stuff SO use the %in% operator!! 
+  These two are codes are doing the exact same thing 
+```{r}
+ex_8 <- starwars |> 
+  filter(eye_color == "blue" | eye_color == "brown" | eye_color == "red")
+
+ex_9 <- starwars |> 
+  filter(eye_color %in% c("blue", "brown", "red"))
+
+#THIS IS NEVER WHAT YOU WANT TO DO !!!!! 
+
+ex_10 <- starwars |> 
+  filter(eye_color == c("blue", "brown", "red")) # this will cause R to think that you are trying to ask the question: does this match? IN THE ORDER THAT THE VECTOR IS WRITTEN ~~ will cycle through and might give you a silent error and you might now even know how fucked you now are 
+```
+
+Now you try 
+homeworld is Endor OR tatooine AND height < 150 
+```{r}
+ex_11 <- starwars |> 
+  filter(homeworld %in% c("Tatooine", "Endor") & height < 150)
+```
+
+Now this one is "which one is NOT" ex: human 
+```{r}
+ex_12 <- starwars |> 
+  filter(species != "Human")
+
+#--- this is the same as 
+
+ex_13 <- starwars |> 
+  filter(!species %in% c("Human"))
+```
+
+# `select()` : select or exclude COLUMNS
+you usually will not have to use this... its not really that overwheling to just have extra columns... usually only useful for extremely mega mega datasets
+```{r}
+#---- select by name 
+ex_14 <- wb_clean |> 
+  select(contry, year, co2_emissions_kt)
+
+#---- select by range ... (positional) 
+ex_15 <- wb_clean |> 
+  select(year:fossil_fuels_cons_pct)
+
+
+#----- exlude something also (use the minus sign)
+ex_16 <- wb_clean |> 
+  select(year:fossil_fuels_cons_pct & -access_electricity_pp)
+```
+
+multiple pipe steps together
+```{r}
+ex_17 <- wb_clean |> 
+  filter(country %in% c("Bolivia", "Chile", "Mexico")) |> 
+  select(country:fossil_fuels_cons_pct)
+```
+
+Use select to change variable (column) names ... also see rename below 
+```{r}
+ex_18 <- wb_clean |> 
+  select(year_new = year, 
+         emissions = co2_emissions_kt, 
+         country_name = country)
+```
+
+select only columns for country, year, and water stress ... reorder them as year, country water stress, then filter to only include observations for any three countries of your choosing 
+```{r}
+ex_19 <- wb_clean |> 
+  select(year, country, water_stress) |> 
+  filter(country %in% c("Australia", "Aruba", "Lebanon"))  
+
+#--- use %in% so it doesn't look in a specific order 
+```
+
+
+### rename
+```{r}
+ex_20 <- wb_clean |> 
+  rename(ffcp = fossil_fuels_cons_pct, ws = water_stress)
+
+
+```
+
+### mutate
+updates an existing column, or add a new one 
+
+If you assign a new column name, it will add a new column to the end of your data frame.... if you assign an existing column name, it will overwrite the column
+
+we want to modify the co2 emissions column (unit conversion kt to t) 
+```{r}
+ex_22 <- wb_clean |> 
+  mutate(co2_emissions_t = co2_emissions_kt * 1000)
+
+#add a column that says YAY
+ex_23 <- wb_clean |> 
+  mutate(yay = "YAY")
+```
+
+mutate year column to make it a character instead of numeric
+```{r}
+ex_24 <- wb_clean |> 
+  mutate(year = as.numeric(year))
+
+#convert back to numeric 
+ex_25 <- ex_24n |> 
+  mutate(year = as.numeric(year))
+```
+
+### relocate 
+used to move around column position
+```{r}
+ex_26 <- wb_clean |> 
+  relocate(water_stress, .after = year) #takes water stress column and puts it after the year column
+```
+
+put a tons column right after the kt column 
+```{r}
+ex_27 <- wb_clean |> 
+  mutate(emissions_t = co2_emissions_kt * 1000) |> 
+  relocate(emissions_t, .after = co2_emissions_kt)
+```
+
+### group_by() |> summarize()
+group by creates groups under the hood based on variables you specify 
+summarize: apply your function to EACH GROUP, and return them in a nice summery table 
+
+create average heights of characters BY species in starwars dataset 
+```{r}
+ex_27 <- starwars |> #still looks the same as origional data set ! under the hood though, you need it 
+  group_by(species) |>   #-- in order to apply the functions below to it 
+  summarize(mean_height = mean(height, na.rm = TRUE), 
+            mean_mass = mean(mass, na.rm = TRUE))
+```
+
+
+### uncount()
+```{r}
+df <- tribble(
+  ~species, ~length, ~number, 
+  "lobster", 12, 4, 
+  "lobster", 14, 6, 
+  "lobster", 15, 2
+)
+#---- this is known as a frequency table... this means there are bins with counts
+#we want a case table...where every observation has its own row(tidy)
+
+#use uncount!
+
+df_case <- df |> 
+  uncount(number) 
+
+#there is also the reverse function called 'count()'
+
+#count... it counts observations by doing group_by(), summarize(), and head?
+
+#count by homeworld and species
+counted_homeworld <- starwars |> 
+  count(homeworld, species)   #---- this gives you a table with the number of obs. with each variable                                          grouped
+```
+
+Practice: 
+-start from wb_clean
+-only keep obs from nicaragua, ecuador, Peru, Chile AND for years greater than 2005 
+-only keep columns country, year, and co2 emissions
+-find the total co2 emissions for years still in the dataset BY country 
+
+try to do the above in one sequence of pipes 
+```{r}
+wb_new <- wb_clean |>  
+  filter(country %in% c("Nicaragua", "Ecuador", "Peru", "Chile"), 
+         year > 2005) |> 
+  select(country, year, co2_emissions_kt) |> 
+  mutate(mega_emissions = co2_emissions_kt / 1000) |> 
+  group_by(country) |> 
+  summarize(total_emissions = sum(mega_emissions, na.rm = TRUE))
+  
+```
+
